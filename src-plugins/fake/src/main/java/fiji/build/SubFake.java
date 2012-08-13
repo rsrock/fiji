@@ -2,10 +2,12 @@ package fiji.build;
 
 import fiji.build.minimaven.BuildEnvironment;
 import fiji.build.minimaven.Coordinate;
+import fiji.build.minimaven.JavaCompiler.CompileError;
 import fiji.build.minimaven.POM;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -39,6 +41,27 @@ public class SubFake extends Rule {
 		if (!new File(Util.makePath(parser.cwd, directory)).exists())
 			parser.fake.err.println("Warning: " + directory
 				+ " does not exist!");
+
+		// Special-case: if we're adding an aggregator pom, add implicit rules for all child poms
+		if (getFakefile() == null) {
+			POM pom = getPOM();
+			if (pom != null && "pom".equals(pom.getPackaging()))
+				addChildren(parser, pom);
+		}
+	}
+
+	protected void addChildren(Parser parser, POM pom) {
+		if (pom.getChildren() == null)
+			return;
+		for (POM child : pom.getChildren()) {
+			String packaging = child.getPackaging();
+			if (child.getBuildFromSource() && "jar".equals(packaging)) {
+				String target = (isImageJ1Plugin(child.getDirectory()) ? "plugins" : "jars") + "/" + child.getArtifactId() + ".jar";
+				parser.allRules.put(target, new SubFake(parser, target, Arrays.asList(child.getDirectory().getPath())));
+			}
+			else if ("pom".equals(packaging))
+				addChildren(parser, child);
+		}
 	}
 
 	@Override
@@ -180,19 +203,7 @@ public class SubFake extends Rule {
 		else {
 			POM pom = getPOM();
 			if (pom != null) try {
-				pom.downloadDependencies();
-				pom.buildJar();
-				String target = this.target;
-				if (getVarBool("keepVersion")) {
-					File unversioned = new File(Util.makePath(parser.cwd, target));
-					if (unversioned.exists())
-						unversioned.delete();
-					target = target.substring(0, target.indexOf('/') + 1) + pom.getJarName();
-				}
-				copyJar(pom.getTarget().getPath(), target, parser.cwd, configPath);
-				if (getVarBool("copyDependencies")) {
-					copyDependencies(pom, new File(target).getAbsoluteFile().getParentFile());
-				}
+				buildPOM(pom);
 				return;
 			} catch (Exception e) {
 				e.printStackTrace(parser.fake.err);
@@ -219,6 +230,36 @@ public class SubFake extends Rule {
 
 		if (target.indexOf('.') >= 0)
 			copyJar(source, target, parser.cwd, configPath);
+	}
+
+	protected void buildPOM(POM pom) throws CompileError, FakeException, IOException, ParserConfigurationException, SAXException {
+		if ("pom".equals(pom.getPackaging())) {
+			for (POM child : pom.getChildren())
+				buildPOM(child);
+			return;
+		}
+
+		boolean isIJ1Plugin = isImageJ1Plugin(pom.getTarget());
+		String subDirectory = isIJ1Plugin ? "plugins" : "jars";
+		String unversionedPath = subDirectory + "/" + pom.getArtifactId() + ".jar";
+		boolean keepVersion = getVarBool("keepVersion", unversionedPath);
+		boolean copyDependencies = getVarBool("copyDependencies", unversionedPath);
+		File targetDirectory = new File(System.getProperty("ij.dir"), subDirectory);
+		File target = new File(targetDirectory, pom.getArtifactId() + ".jar");
+		if (pom.upToDate(true) && upToDate(pom.getTarget(), target))
+			return;
+		pom.downloadDependencies();
+		pom.buildJar();
+		if (keepVersion) {
+			File unversioned = new File(Util.makePath(parser.cwd, target.getPath()));
+			if (unversioned.exists())
+				unversioned.delete();
+			target = new File(targetDirectory, pom.getJarName());
+		}
+		copyJar(pom.getTarget().getPath(), target.getPath(), parser.cwd, configPath);
+		if (copyDependencies) {
+			copyDependencies(pom, targetDirectory);
+		}
 	}
 
 	protected void fakeOrMake(String subTarget) throws FakeException {
@@ -270,9 +311,11 @@ public class SubFake extends Rule {
 
 	protected boolean isImageJ1Plugin(File file) {
 		String name = file.getName();
-		if (!name.endsWith(".jar") || name.indexOf('_') < 0 || !file.exists())
+		if (name.indexOf('_') < 0 || !file.exists())
 			return false;
-		try {
+		if (file.isDirectory())
+			return new File(file, "src/main/resources/plugins.config").exists();
+		if (name.endsWith(".jar")) try {
 			JarFile jar = new JarFile(file);
 			for (JarEntry entry : Collections.list(jar.entries()))
 				if (entry.getName().equals("plugins.config")) {

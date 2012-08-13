@@ -181,7 +181,7 @@ fiji.Main|ij.ImageJ)
 	CLASSPATH="$FIJI_ROOT/jars/ij-launcher.jar$PATHSEPARATOR$FIJI_ROOT/jars/ij.jar$PATHSEPARATOR$FIJI_ROOT/jars/javassist.jar"
 	;;
 fiji.build.Fake)
-	CLASSPATH="$FIJI_ROOT/jars/fake.jar"
+	CLASSPATH="$(find $FIJI_ROOT/jars -name fake*.jar)"
 	;;
 org.apache.tools.ant.Main)
 	CLASSPATH="$(discover_tools_jar)"
