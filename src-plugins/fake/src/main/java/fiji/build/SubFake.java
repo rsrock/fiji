@@ -239,7 +239,7 @@ public class SubFake extends Rule {
 			return;
 		}
 
-		boolean isIJ1Plugin = isImageJ1Plugin(pom.getTarget());
+		boolean isIJ1Plugin = isImageJ1Plugin(pom.getDirectory());
 		String subDirectory = isIJ1Plugin ? "plugins" : "jars";
 		String unversionedPath = subDirectory + "/" + pom.getArtifactId() + ".jar";
 		boolean keepVersion = getVarBool("keepVersion", unversionedPath);
