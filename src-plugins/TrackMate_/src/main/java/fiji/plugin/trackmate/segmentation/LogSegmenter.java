@@ -154,7 +154,7 @@ public class LogSegmenter <T extends RealType<T>> extends AbstractSpotSegmenter<
 	@Override
 	public String getInfoText() {
 		return "<html>" +
-				"This segmenter applies a LoG (Laplacian of Gaussian) filter <br>" +
+				"RSR This segmenter applies a LoG (Laplacian of Gaussian) filter <br>" +
 				"to the image, with a sigma suited to the blob estimated size. <br>" +
 				"Calculations are made in the Fourier space. The maxima in the <br>" +
 				"filtered image are searched for, and maxima too close from each <br>" +
