@@ -366,12 +366,12 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		// Ronald Rock: read Andor iXon / Luca SIF files
 		// Note that the headers for the Luca and the iXon are different
 		// May need to check for this in the future
-        if (name.toUpperCase().endsWith(".SIF")) {
-            // First three bytes are "And" as in "Andor"
-            if(buf[0]==0x41 && buf[1]==0x6e && buf[2]==0x64) {
-                //IJ.runPlugIn("Luca_SIF", path);
-                return tryPlugIn("MySIF_Reader", path);
-            }
+        // First three bytes are "And" as in "Andor"
+        if (name.toUpperCase().endsWith(".SIF") && buf[0]==0x41 &&
+            buf[1]==0x6e && buf[2]==0x64) {
+                //return tryPlugin("Luca_SIF", path);
+            IJ.log("trying MySIF_Reader");
+            return tryPlugIn("MySIF_Reader", path);
         }
 
 		return null;

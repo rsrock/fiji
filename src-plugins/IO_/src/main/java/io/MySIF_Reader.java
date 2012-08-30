@@ -8,7 +8,7 @@ import ij.io.*;
 import ij.plugin.PlugIn;
 import ij.plugin.frame.Editor;
 
-public class MySIF_Reader implements PlugIn {
+public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 	public void run(String arg) {
 		OpenDialog od = new OpenDialog("Open SIF...", arg);
