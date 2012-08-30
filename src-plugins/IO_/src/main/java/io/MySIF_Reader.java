@@ -11,21 +11,28 @@ import ij.plugin.frame.Editor;
 public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 	public void run(String arg) {
-		OpenDialog od = new OpenDialog("Open SIF...", arg);
-		String file = od.getFileName();
-		if (file == null) return;
-		String directory = od.getDirectory();
-		ImagePlus imp = open(directory, file);
-		if (imp != null ) {
-			//imp.TypeConverter.convertToGray16();
-			//IJ.convert("16-bit");  // how the heck is this supposed to work?
+        String directory = "", name = arg;
+		if ((arg==null) || (arg=="")) {
+            OpenDialog od = new OpenDialog("Open SIF...", arg);
+            name = od.getFileName();
+			if (name==null)
+                return;
+			directory = od.getDirectory();
+		} else {
+			File dest = new File(arg);
+			directory = dest.getParent();
+			name = dest.getName();
+        }
+		ImagePlus imp = load(directory, name);
+        // if we weren't sent a filename but chose one, then show the image
+		if ((imp != null) && (arg.equals(""))) {
 			imp.show();
 		} else {
-			IJ.showMessage("Open SIF...", "Failed.");
+			IJ.error("Open SIF...", "Failed.");
 		}
 	}
 
-	public static ImagePlus open(String directory, String file) {
+	public static ImagePlus load(String directory, String file) {
 	    int i, offset = 0;
 	    boolean showInfoMessage = true;
 
