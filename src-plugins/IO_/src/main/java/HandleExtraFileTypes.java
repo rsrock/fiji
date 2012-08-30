@@ -79,7 +79,7 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		if (IJ.getVersion().compareTo("1.41o")>=0)
 			setOpenAsHyperStack(imp.getOpenAsHyperStack());
 	}
-	
+
 
 	private Object tryOpen(String directory, String name, String path) {
 		// set up a stream to read in 132 bytes from the file header
@@ -279,7 +279,7 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		}
 
 		// Greg Jefferis: open nrrd images
-		// see Nrrd_Reader code or 
+		// see Nrrd_Reader code or
 		// http://teem.sourceforge.net/nrrd/
 		try {
 			String nrrdMagic=new String(buf,0,7,"US-ASCII");
@@ -293,7 +293,7 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		// ----------------------------------------------
 		// Check if the file ends in .bin or in the case
 		// of the gzip compressed version .bin.gz
-		if (name.toLowerCase().endsWith(".bin") || 
+		if (name.toLowerCase().endsWith(".bin") ||
 		    name.toLowerCase().endsWith(".bin.gz") ) {
 			// Since those filenames are not particularly specific, do a bit more checking
 			// These files come in pairs as follows:
@@ -307,8 +307,8 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 
 			if(studyDir.isDirectory())
     			// Ok we've identified the file type - now load it
-    			return tryPlugIn("io.TorstenRaw_GZ_Reader",path);			    
-		}	
+    			return tryPlugIn("io.TorstenRaw_GZ_Reader",path);
+		}
 
 		// Johannes Schindelin: open one or more images in a .ico file
 		if (name.endsWith(".ico"))
@@ -353,7 +353,7 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		// do what ever you have to do to recognise your own file type
 		// and then call appropriate plugin using the above as models
 		// e.g.:
-		
+
 		/*
 		// A. Dent: Added XYZ handler
 		// ----------------------------------------------
@@ -363,6 +363,16 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 			return tryPlugIn("XYZ_Reader", path);
 		}
 		*/
+		// Ronald Rock: read Andor iXon / Luca SIF files
+		// Note that the headers for the Luca and the iXon are different
+		// May need to check for this in the future
+        if (name.toUpperCase().endsWith(".SIF")) {
+            // First three bytes are "And" as in "Andor"
+            if(buf[0]==0x41 && buf[1]==0x6e && buf[2]==0x64) {
+                //IJ.runPlugIn("Luca_SIF", path);
+                return tryPlugIn("MySIF_Reader", path);
+            }
+        }
 
 		return null;
 	}
@@ -397,7 +407,7 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		}
 
 		return null;
-		
+
 	} // openImage
 
 	/**
