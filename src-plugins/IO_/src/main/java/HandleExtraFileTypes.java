@@ -369,18 +369,18 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
         // First three bytes are "And" as in "Andor"
         if (name.toUpperCase().endsWith(".SIF") && buf[0]==0x41 &&
             buf[1]==0x6e && buf[2]==0x64) {
-                //return tryPlugin("Luca_SIF", path);
-            IJ.log("trying MySIF_Reader");
-            return tryPlugIn("MySIF_Reader", path);
+            //return tryPlugin("Luca_SIF", path);
+            return tryPlugIn("io.MySIF_Reader", path);
         }
-
-		return null;
+ 		return null;
 	}
 
 	private ImagePlus openImage(String directory, String name, String path) {
 		Object o = tryOpen(directory, name, path);
 		// if an image was returned, assume success
-		if (o instanceof ImagePlus) return (ImagePlus)o;
+		if (o instanceof ImagePlus) {
+			return (ImagePlus)o;
+		}
 
 		// tryPlugIn sets width to IMAGE_OPENED when a plugin that does not
 		// extend ImagePlus successfully opens the image
@@ -405,9 +405,7 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 				catch (Exception exc) { }
 			}
 		}
-
 		return null;
-
 	} // openImage
 
 	/**
@@ -420,16 +418,15 @@ public class HandleExtraFileTypes extends ImagePlus implements PlugIn {
 		if (o instanceof ImagePlus) {
 			// plugin extends ImagePlus class
 			ImagePlus imp = (ImagePlus)o;
-				if (imp.getWidth()==0)
-					o = null; // invalid image
-				else
-					width = IMAGE_OPENED; // success
+            if (imp.getWidth()==0) {
+                o = null; // invalid image
+            } else {
+                width = IMAGE_OPENED; // success
+            }
 		} else if (o != null) {
 			// plugin was run but does not extend ImagePlus; assume success
 			width = IMAGE_OPENED;
 		} // ... else plugin was not run/found
 		return o;
 	}
-
-
 }

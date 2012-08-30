@@ -1,12 +1,15 @@
 package io;
 
-import java.awt.*;
-import java.awt.event.*;
-import java.io.*;
-import ij.*;
-import ij.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import ij.IJ;
+import ij.ImagePlus;
+import ij.io.FileInfo;
+import ij.io.FileOpener;
+import ij.io.OpenDialog;
 import ij.plugin.PlugIn;
-import ij.plugin.frame.Editor;
 
 public class MySIF_Reader extends ImagePlus implements PlugIn {
 
@@ -23,22 +26,24 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 			directory = dest.getParent();
 			name = dest.getName();
         }
+		IJ.log(directory + name);
 		ImagePlus imp = load(directory, name);
         // if we weren't sent a filename but chose one, then show the image
-		if ((imp != null) && (arg.equals(""))) {
-			imp.show();
+		if (imp != null) {
+			if (arg.equals("")) {
+				imp.show();
+			}
 		} else {
 			IJ.error("Open SIF...", "Failed.");
 		}
 	}
 
-	public static ImagePlus load(String directory, String file) {
-	    int i, offset = 0;
+	@SuppressWarnings("unused")
+	public ImagePlus load(String directory, String name) {
+	    int offset = 0;
 	    boolean showInfoMessage = true;
-
-		File f = new File(directory, file);
+		File f = new File(directory, name);
 		try {
-			offset = 0;
 			BufferedReader in = new BufferedReader(new FileReader(f));
 
 			// line 1
@@ -76,11 +81,11 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 			flush = st.nextToken();										// trigger_level
 			float exposure = Float.parseFloat(st.nextToken());			// exposure_time
 			float framedelay = Float.parseFloat(st.nextToken());		// delay
-			flush = st.nextToken();										// integration_cycle_time
+			float int_cycle_time = Float.parseFloat(st.nextToken());	// integration_cycle_time
 			int numinteg = Integer.parseInt(st.nextToken());			// no_integrations
 			flush = st.nextToken();										// sync
 			float kincycletime = Float.parseFloat(st.nextToken());		// kinetic_cycle_time
-			flush = st.nextToken();										// pixel_readout_time
+			float pix_read_time = Float.parseFloat(st.nextToken());		// pixel_readout_time
 			flush = st.nextToken();										// no_points
 			flush = st.nextToken();										// fast_track_height
 			int gain = Integer.parseInt(st.nextToken());				// gain
@@ -104,9 +109,9 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 			flush = st.nextToken();										// IOC
 			flush = st.nextToken();										// Freq
 			flush = st.nextToken();										// VertClockAmp
-			flush = st.nextToken();										// data_v_shift_speed
-			flush = st.nextToken();										// OutputAmp
-			flush = st.nextToken();										// PreAmpGain
+			float vert_shift_speed = Float.parseFloat(st.nextToken());	// data_v_shift_speed
+			int output_amp = Integer.parseInt(st.nextToken());			// OutputAmp
+			float preamp_gain = Float.parseFloat(st.nextToken());		// PreAmpGain
 			flush = st.nextToken();										// Serial
 			// the following do not seem to appear in the header, but some are here for the Luca??  Not sure what's different here
 			// but probably not needed for our purposes
@@ -121,7 +126,7 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 			// Now at "head_model" in TInstaImage
 			flush = st.nextToken();										// number of bytes in head model string, next readline should be ok)
-			line = in.readLine();										// head model string
+			String head_model = in.readLine();							// head model string
 			offset += line.length() + 1;
 			// Now at detector_format_x in TInstaImage
 			line = in.readLine();										// not interesting...
@@ -255,23 +260,32 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 				//IJ.showMessage("Image height is "+height+".\nImage width is "+width+".\nStacksize is "+Zdim+".\nOffset is "+offset+".");
 
 				// result window
+				String oa = (output_amp==0)?"EM":"Conventional";
 				String logtext =
-													  file +
-					"\n\nTemperature (deg C):\t"	+ temperature +
-					"\nExposure Time (sec):\t"		+ exposure +
-					"\nKin Cycle Time (sec):\t"		+ kincycletime +
-					"\nEM Gain level:\t\t"		    + gain +
-					"\n\nLeft:\t\t\t"			    + left +
-					"\nRight:\t\t\t"			    + right +
-					"\nTop:\t\t\t"				    + top +
-					"\nBottom:\t\t\t"			    + bottom +
-					"\nHorizontal Binning:\t"		+ horizontal_bin +
-					"\nVertical Binning:\t"		    + vertical_bin +
+													  name +
+					"\nEM Gain: "		   			+ gain +
+					"\nExposure Time (s): "			+ exposure +
+					"\nKinetic Cycle Time (s): "	+ kincycletime +
+					"\nFrame Delay (s): "			+ framedelay +
+					"\nIntegration Cycle Time (s): "+ int_cycle_time +
+					"\nNum Integrated: "			+ numinteg +
+					"\nPixel Read Time (s): "		+ pix_read_time +
+					"\nVertical Shift Time (s): "	+ vert_shift_speed +
+					"\nOutput Amp: "				+ oa +
+					"\nPreamp Gain: "				+ preamp_gain +
+					"\nTemperature (deg C): "		+ temperature +
+					"\nLeft: "			        	+ left +
+					"\nRight: "			    		+ right +
+					"\nTop: "				    	+ top +
+					"\nBottom: "			    	+ bottom +
+					"\nHorizontal Binning: "		+ horizontal_bin +
+					"\nVertical Binning: "		    + vertical_bin +
+					"\nCamera Head: "				+ head_model +
  					"\n" + usertext + "\n";
 
                 IJ.log(logtext);
 			}
-
+			in.close();
 			/*
 			Now that the size and the offset of the image is known
 			we can open the image/stack.
@@ -279,10 +293,9 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 			FileInfo fi = new FileInfo();
 			fi.directory = directory;
-			fi.fileFormat = fi.RAW;
-			fi.fileName = file;
-			// GRAY32 is the file type for .SIF's
-			fi.fileType = 4;
+			fi.fileFormat = FileInfo.RAW;
+			fi.fileName = name;
+			fi.fileType = FileInfo.GRAY32_FLOAT;
 			fi.intelByteOrder = true;
 			fi.gapBetweenImages = 0;
 			fi.offset = offset;
@@ -292,6 +305,9 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 			FileOpener fo = new FileOpener(fi);
 			ImagePlus imp = fo.open(false);
+	        setStack(name,  imp.getStack());
+	        setCalibration(imp.getCalibration());
+	        setFileInfo(fi);
 			IJ.showStatus("");
 			return imp;
 
@@ -299,6 +315,6 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 			IJ.error("An error occured reading the file.\n \n" + e);
 			IJ.showStatus("");
 			return null;
-		}
+		} 
 	}
 }
