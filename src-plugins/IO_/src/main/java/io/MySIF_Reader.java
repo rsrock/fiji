@@ -40,10 +40,11 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 	@SuppressWarnings("unused")
 	public ImagePlus load(String directory, String name) {
-	    int offset = 0;
+	    int offset;
 	    boolean showInfoMessage = true;
 		File f = new File(directory, name);
 		try {
+			offset = 0;
 			BufferedReader in = new BufferedReader(new FileReader(f));
 
 			// line 1
@@ -55,10 +56,10 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 			// line 2
 			line = in.readLine();
+			offset += line.length() + 1;
 			if (!line.equals("65538 1")) {								// "65538 1"  Andor File version num, and SIGNAL image is present)
 				IJ.error("unknown Andor file version number at offset " + offset);
 			}
-			offset += line.length() + 1;
 
 			// line 3: TInstaImage thru "head model"
 			line = in.readLine();
@@ -126,7 +127,8 @@ public class MySIF_Reader extends ImagePlus implements PlugIn {
 
 			// Now at "head_model" in TInstaImage
 			flush = st.nextToken();										// number of bytes in head model string, next readline should be ok)
-			String head_model = in.readLine();							// head model string
+			line = in.readLine();										// head model string
+			String head_model = line;
 			offset += line.length() + 1;
 			// Now at detector_format_x in TInstaImage
 			line = in.readLine();										// not interesting...
