@@ -198,10 +198,28 @@ public class Fake {
 	}
 
 	// keep this synchronized with imagej.updater.core.FileObject
-	private static Pattern versionPattern = Pattern.compile("(.+?)(-\\d+(\\.\\d+)+[a-z]?\\d?(-[A-Za-z0-9.]+|\\.GA)*)(\\.jar(-[a-z]*)?)");
+	private final static Pattern versionPattern = Pattern.compile("(.+?)(-\\d+(\\.\\d+|\\d{7})+[a-z]?\\d?(-[A-Za-z0-9.]+|\\.GA)*)(\\.jar(-[a-z]*)?)");
 
 	public static Matcher matchVersionedFilename(String filename) {
 		return versionPattern.matcher(filename);
+	}
+
+	public static File[] getAllVersions(final File directory, final String filename) {
+		final Matcher matcher = matchVersionedFilename(filename);
+		if (!matcher.matches()) {
+			final File file = new File(directory, filename);
+			return file.exists() ? new File[] { file } : null;
+		}
+		final String baseName = matcher.group(1);
+		return directory.listFiles(new FilenameFilter() {
+			@Override
+			public boolean accept(final File dir, final String name) {
+				if (!name.startsWith(baseName))
+					return false;
+				final Matcher matcher2 = matchVersionedFilename(name);
+				return matcher2.matches() && baseName.equals(matcher2.group(1));
+			}
+		});
 	}
 
 	/* input defaults to reading the Fakefile, cwd to "." */

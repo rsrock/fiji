@@ -54,6 +54,7 @@ public class SPIMConfiguration
 	public String transformationModel = "Affine";
 	// time lapse
 	public boolean timeLapseRegistration = false;
+	public boolean fuseReferenceTimepoint = true;
 	public int referenceTimePoint = 1;
 	public SPIMExperiment spimExperiment = null;
 
@@ -92,6 +93,7 @@ public class SPIMConfiguration
     public boolean isDeconvolution = false;
     public Multi_View_Deconvolution instance = null;
 
+    public boolean fuseOnly = false;
     public boolean registerOnly = false;
     public boolean displayRegistration = false;
     public boolean readSegmentation = false;
@@ -387,7 +389,7 @@ public class SPIMConfiguration
     		}
     	}
 
-	if ( useScaleSpace )
+	if ( useScaleSpace && !fuseOnly )
 	{
 		final int numChannelsRegister = channelsRegister.length;
 

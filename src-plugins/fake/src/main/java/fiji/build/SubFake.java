@@ -251,16 +251,19 @@ public class SubFake extends Rule {
 
 	protected void buildPOM(final POM pom) throws CompileError, FakeException, IOException, ParserConfigurationException, SAXException {
 		if ("pom".equals(pom.getPackaging())) {
-			for (POM child : pom.getChildren())
+			for (POM child : pom.getChildren()) try {
 				buildPOM(child);
+			} catch (IOException e) {
+				parser.fake.err.println("Could not build " + child.getArtifactId() + ", target is " + target);
+				throw e;
+			}
 			return;
 		}
 
 		boolean isIJ1Plugin = isImageJ1Plugin(pom.getDirectory());
 		final String subDirectory = isIJ1Plugin ? "plugins" : "jars";
-		final String unversionedPath = subDirectory + "/" + pom.getArtifactId() + ".jar";
-		boolean keepVersion = getVarBool("keepVersion", unversionedPath);
-		boolean copyDependencies = getVarBool("copyDependencies", unversionedPath);
+		boolean keepVersion = !pom.getArtifactId().equals("Fiji_Updater");
+		boolean copyDependencies = getVarBool("copyDependencies", subDirectory + "/" + pom.getArtifactId() + ".jar");
 		final File targetDirectory = new File(System.getProperty("ij.dir"), subDirectory);
 		final File unversioned = new File(targetDirectory, pom.getArtifactId() + ".jar");
 		final File targetFile = keepVersion ? new File(targetDirectory, pom.getJarName()) : unversioned;
@@ -268,9 +271,7 @@ public class SubFake extends Rule {
 			return;
 		pom.downloadDependencies();
 		pom.buildJar();
-		if (keepVersion && unversioned.exists()) {
-			unversioned.delete();
-		}
+		deleteVersions(targetDirectory, pom.getJarName());
 		copyJar(pom.getTarget().getPath(), targetFile.getPath(), parser.cwd, configPath);
 		if (copyDependencies) {
 			copyDependencies(pom, targetDirectory);
@@ -312,16 +313,26 @@ public class SubFake extends Rule {
 			File directory = plugins != null && isImageJ1Plugin(file) ? plugins : targetDirectory;
 			String jarName;
 			final String artifactId = dependency.getArtifactId();
-			if ((getVarBool("keepVersion") || artifactId.startsWith("imglib2")) && !artifactId.equals("Fiji_Updater")) {
-				File unversioned = new File(directory, artifactId + ".jar");
-				if (unversioned.exists())
-					unversioned.delete();
+			if ((getVarBool("keepVersion") || artifactId.startsWith("imglib2")))
 				jarName = dependency.getJarName();
-			} else
+			else
 				jarName = dependency.getArtifactId() + ".jar";
+			deleteVersions(directory, jarName);
 			File destination = new File(directory, jarName);
 			if (file.exists() && (!destination.exists() || destination.lastModified() < file.lastModified()))
 				BuildEnvironment.copyFile(file, destination);
+		}
+	}
+
+	protected void deleteVersions(final File directory, final String filename) {
+		final File[] versioned = Fake.getAllVersions(directory, filename);
+		if (versioned == null)
+			return;
+		for (final File file : versioned) {
+			if (!file.getName().equals(filename))
+				parser.fake.err.println("Warning: deleting '" + file + "'");
+			if (!file.delete())
+				parser.fake.err.println("Warning: could not delete '" + file + "'");
 		}
 	}
 
@@ -379,14 +390,7 @@ public class SubFake extends Rule {
 				boolean isIJ1Plugin = isImageJ1Plugin(pom.getDirectory());
 				final String subDirectory = isIJ1Plugin ? "plugins" : "jars";
 				final File targetDirectory = new File(System.getProperty("ij.dir"), subDirectory);
-				final File unversioned = new File(targetDirectory, pom.getArtifactId() + ".jar");
-				if (unversioned.exists()) {
-					unversioned.delete();
-				}
-				final File versioned = new File(targetDirectory, pom.getJarName());
-				if (versioned.exists()) {
-					versioned.delete();
-				}
+				deleteVersions(targetDirectory, pom.getJarName());
 				try {
 					pom.clean();
 				} catch (Exception e) {
