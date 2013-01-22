@@ -6,7 +6,7 @@ import mpicbg.models.TranslationModel2D;
 import mpicbg.models.TranslationModel3D;
 
 public class DescriptorParameters 
-{
+{	
 	/**
 	 * How many iterations for a RANSAC
 	 */
@@ -64,6 +64,10 @@ public class DescriptorParameters
 	public double ransacThreshold;
 	public int channel1, channel2;
 	
+	public boolean regularize = false;
+	public boolean fixFirstTile = true;
+	public double lambda = 0.1;
+	
 	// for stack-registration
 	public int globalOpt; // 0=all-to-all; 1=all-to-all-withrange; 2=all-to-1; 3=Consecutive
 	public int range;	
@@ -74,6 +78,9 @@ public class DescriptorParameters
 	
 	public boolean setPointsRois = true;
 	
+	// Display anything?
+	public boolean silent = false;
+
 	// 0 == fuse in memory, 1 == write to disk, 2 == nothing
 	public int fuse = 0;
 	

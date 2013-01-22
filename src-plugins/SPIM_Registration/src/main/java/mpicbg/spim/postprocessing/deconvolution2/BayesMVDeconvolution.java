@@ -1,6 +1,9 @@
 package mpicbg.spim.postprocessing.deconvolution2;
 
+import ij.CompositeImage;
 import ij.IJ;
+import ij.ImagePlus;
+import ij.ImageStack;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -13,6 +16,7 @@ import mpicbg.imglib.image.display.imagej.ImageJFunctions;
 import mpicbg.imglib.multithreading.Chunk;
 import mpicbg.imglib.multithreading.SimpleMultiThreading;
 import mpicbg.imglib.type.numeric.real.FloatType;
+import mpicbg.spim.postprocessing.deconvolution2.LRFFT.PSFTYPE;
 
 public class BayesMVDeconvolution implements Deconvolver
 {
@@ -24,6 +28,9 @@ public class BayesMVDeconvolution implements Deconvolver
 	final int numViews, numDimensions;
     final float avg;
     final double lambda;
+    
+    ImageStack stack;
+    CompositeImage ci;
     
     boolean collectStatistics = true;
     
@@ -38,7 +45,7 @@ public class BayesMVDeconvolution implements Deconvolver
 	ArrayList<LRFFT> data;
 	String name;
 	
-	public BayesMVDeconvolution( final LRInput views, final int numIterations, final double lambda, final String name )
+	public BayesMVDeconvolution( final LRInput views, final PSFTYPE iterationType, final int numIterations, final double lambda, final String name )
 	{
 		this.name = name;
 		this.data = views.getViews();
@@ -54,7 +61,7 @@ public class BayesMVDeconvolution implements Deconvolver
 		IJ.log( "Average intensity in overlapping area: " + avg );        
 		
 		// init all views
-		views.init( true );
+		views.init( iterationType );
 		
 		//
 		// the real data image psi is initialized with the average 
@@ -62,21 +69,63 @@ public class BayesMVDeconvolution implements Deconvolver
 		for ( final FloatType f : psi )
 			f.set( avg );
 		
+		//this.stack = new ImageStack( this.psi.getDimension( 0 ), this.psi.getDimension( 1 ) );
+		
 		// run the deconvolution
 		while ( i < numIterations )
 		{
 			runIteration();
 			
-			if ( debug && i % debugInterval == 0 )
+			if ( debug && (i-1) % debugInterval == 0 )
 			{
+				psi.getDisplay().setMinMax( 0, 1 );
+				final ImagePlus tmp = ImageJFunctions.copyToImagePlus( psi );
+				
+				if ( this.stack == null )
+				{
+					this.stack = tmp.getImageStack();
+					for ( int i = 0; i < this.psi.getDimension( 2 ); ++i )
+						this.stack.setSliceLabel( "Iteration 1", i + 1 );
+					
+					tmp.setTitle( "debug view" );
+					this.ci = new CompositeImage( tmp, CompositeImage.COMPOSITE );
+					this.ci.setDimensions( 1, this.psi.getDimension( 2 ), 1 );
+					this.ci.show();
+				}
+				else if ( stack.getSize() == this.psi.getDimension( 2 ) )
+				{
+					IJ.log( "Stack size = " + this.stack.getSize() );
+					final ImageStack t = tmp.getImageStack();
+					for ( int i = 0; i < this.psi.getDimension( 2 ); ++i )
+						this.stack.addSlice( "Iteration 2", t.getProcessor( i + 1 ) );
+					IJ.log( "Stack size = " + this.stack.getSize() );
+					this.ci.hide();
+					IJ.log( "Stack size = " + this.stack.getSize() );
+					
+					this.ci = new CompositeImage( new ImagePlus( "debug view", this.stack ), CompositeImage.COMPOSITE );
+					this.ci.setDimensions( 1, this.psi.getDimension( 2 ), 2 );
+					this.ci.show();
+				}
+				else
+				{
+					final ImageStack t = tmp.getImageStack();
+					for ( int i = 0; i < this.psi.getDimension( 2 ); ++i )
+						this.stack.addSlice( "Iteration " + i, t.getProcessor( i + 1 ) );
+
+					this.ci.setStack( this.stack, 1, this.psi.getDimension( 2 ), stack.getSize() / this.psi.getDimension( 2 ) );	
+				}
+				/*
 				Image<FloatType> psiCopy = psi.clone();
 				//ViewDataBeads.normalizeImage( psiCopy );
 				psiCopy.setName( "Iteration " + i + " l=" + lambda );
 				psiCopy.getDisplay().setMinMax( 0, 1 );
 				ImageJFunctions.copyToImagePlus( psiCopy ).show();
 				psiCopy.close();
-				psiCopy = null;			}
+				psiCopy = null;*/
+			}
 		}
+		
+		IJ.log( "DONE (" + new Date(System.currentTimeMillis()) + ")." );
 	}
 	
 	public LRInput getData() { return views; }
@@ -107,7 +156,7 @@ public class BayesMVDeconvolution implements Deconvolver
 		else
 			lastIteration = null;
 
-
+		//int view = iteration % numViews;
 		for ( int view = 0; view < numViews; ++view )
 		{
 			final LRFFT processingData = data.get( view );
@@ -208,11 +257,7 @@ public class BayesMVDeconvolution implements Deconvolver
 				maxChange = Math.max( maxChange, sumMax[ i ][ 1 ] );
 			}
 			
-			IJ.log("------------------------------------------------");
-			IJ.log(" Iteration: " + iteration );
-			IJ.log(" Change: " + sumChange );
-			IJ.log(" Max Change per Pixel: " + maxChange );
-			IJ.log("------------------------------------------------");
+			IJ.log("iteration: " + iteration + " --- sum change: " + sumChange + " --- max change per pixel: " + maxChange );
 		}
 		
 		//System.out.println( "final: " + (time - System.currentTimeMillis()) + " ms." );

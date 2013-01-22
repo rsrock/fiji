@@ -27,6 +27,8 @@ import mpicbg.imglib.type.numeric.integer.UnsignedByteType;
 import mpicbg.imglib.type.numeric.integer.UnsignedShortType;
 import mpicbg.imglib.type.numeric.real.FloatType;
 import mpicbg.models.AbstractAffineModel3D;
+import mpicbg.models.InterpolatedAffineModel2D;
+import mpicbg.models.InterpolatedAffineModel3D;
 import mpicbg.models.InvertibleBoundable;
 import mpicbg.models.Model;
 import mpicbg.models.Point;
@@ -48,15 +50,23 @@ import mpicbg.spim.registration.ViewStructure;
 import mpicbg.spim.registration.bead.BeadRegistration;
 import mpicbg.spim.registration.detection.DetectionSegmentation;
 import mpicbg.spim.segmentation.InteractiveDoG;
-import mpicbg.stitching.TextFileAccess;
 import plugin.DescriptorParameters;
 import plugin.Descriptor_based_registration;
 import plugin.Descriptor_based_series_registration;
 
 public class Matching 
 {
-	public static void descriptorBasedRegistration( final ImagePlus imp1, final ImagePlus imp2, final DescriptorParameters params )
+	/**
+	 * 
+	 * @param imp1
+	 * @param imp2
+	 * @param params
+	 * @return - the number of inliers
+	 */
+	public static int descriptorBasedRegistration( final ImagePlus imp1, final ImagePlus imp2, final DescriptorParameters params )
 	{
+		int numInliers = 0;
+		
 		Model<?> model1;
 		Model<?> model2;
 		
@@ -77,36 +87,55 @@ public class Matching
 			peaks1 = filterForROI( params.roi1, peaks1 );
 			peaks2 = filterForROI( params.roi2, peaks2 );
 			
-			if ( size1 != peaks1.size() )
+			if ( size1 != peaks1.size() && !params.silent )
 				IJ.log( peaks1.size() + " candidates remaining for " + imp1.getTitle() + " after filtering by ROI." );
 			
-			if ( size2 != peaks2.size() )
+			if ( size2 != peaks2.size() && !params.silent)
 				IJ.log( peaks2.size() + " candidates remaining for " + imp2.getTitle() + " after filtering by ROI." );
 			
 			final int minNumPeaks = params.numNeighbors + params.redundancy + 1; 
-			if ( peaks1.size() < minNumPeaks || peaks2.size() < minNumPeaks )
+			if ( peaks1.size() < minNumPeaks || peaks2.size() < minNumPeaks  )
 			{
-				IJ.log( "Not enough peaks in one of the images, should be at least " + minNumPeaks + ", " + imp1.getTitle() + 
-						" has " + peaks1.size() + "peaks, " + imp2.getTitle() + " has " + peaks2.size() + " peaks."  );
+				if ( !params.silent )
+					IJ.log( "Not enough peaks in one of the images, should be at least " + minNumPeaks + ", " + imp1.getTitle() + 
+							" has " + peaks1.size() + "peaks, " + imp2.getTitle() + " has " + peaks2.size() + " peaks."  );
 				
-				return;
+				return 0;
 			}
 
 			// compute ransac
 			ArrayList<PointMatch> finalInliers = new ArrayList<PointMatch>();
 			model1 = pairwiseMatching( finalInliers, peaks1, peaks2, zStretching1, zStretching2, params, "" );				
 			model2 = params.model.copy();
-			IJ.log( "" + model1 );
 			
+			numInliers = finalInliers.size();
+						
 			// nothing found
 			if ( model1 == null || model2 == null )
-				return;
+				return 0;
 			
-			// set the static model
+			// set the static model			
+			if ( params.regularize )
+			{
+				if ( params.dimensionality == 2 )
+				{
+					model1 = ((InterpolatedAffineModel2D)model1).createAffineModel2D();
+					model2 = ((InterpolatedAffineModel2D)model2).createAffineModel2D();					
+				}
+				else
+				{
+					model1 = ((InterpolatedAffineModel3D)model1).createAffineModel3D();
+					model2 = ((InterpolatedAffineModel3D)model2).createAffineModel3D();					
+				}
+			}
+			
 			Descriptor_based_registration.lastModel1 = (InvertibleBoundable)model1.copy();
 			Descriptor_based_registration.lastModel2 = (InvertibleBoundable)model2.copy();
 			Descriptor_based_registration.lastDimensionality = params.dimensionality;
 			
+			if ( !params.silent )
+				IJ.log( "" + model1 );
+
 			// set point rois if 2d and wanted
 			if ( params.setPointsRois )
 				setPointRois( imp1, imp2, finalInliers );
@@ -133,7 +162,8 @@ public class Matching
 				}
 				catch (Exception e) 
 				{
-					IJ.log( "WARNING: Cannot cast " + model1.getClass().getSimpleName() + " to AbstractAffineModel3d, cannot concatenate axial scaling." );
+					if ( !params.silent )
+						IJ.log( "WARNING: Cannot cast " + model1.getClass().getSimpleName() + " to AbstractAffineModel3d, cannot concatenate axial scaling." );
 				}
 				//IJ.log( "model1: " + model1 );
 				//IJ.log( "model2: " + model2 );
@@ -148,6 +178,8 @@ public class Matching
 			
 			composite.show();
 		}
+		
+		return numInliers;
 	}
 	
 	public static void descriptorBasedStackRegistration( final ImagePlus imp, final DescriptorParameters params )
@@ -178,20 +210,27 @@ public class Matching
 	        // perform global optimization
 	        models = globalOptimization( pairs, numImages, params );
 	        
+	        if ( models == null )
+	        	return;
+	        
 			// we are done if no roi was selected, otherwise we have to update the roi with the new transformations
 			if ( params.roi1 != null )
 			{
 				int numMatches = countMatches( pairs );
-				IJ.log( "\nNumber of matches " + numMatches );
+				
+				if ( !params.silent )
+					IJ.log( "\nNumber of matches " + numMatches );
 				
 				// iterate until it converges
 				for ( int iteration = 0; iteration < 5; ++iteration )
 				{
-					IJ.log( "\nIteration " + (iteration+1) );
+					if ( !params.silent )
+						IJ.log( "\nIteration " + (iteration+1) );
 				
 					final int numMatches2 = performIteration( models, peaksComplete, numImages, params, zStretching );
 
-					IJ.log( "\nNumber of matches " + numMatches2 );
+					if ( !params.silent )
+						IJ.log( "\nNumber of matches " + numMatches2 );
 
 					if ( numMatches == numMatches2 )
 						break;
@@ -224,7 +263,8 @@ public class Matching
 				}
 				catch (Exception e) 
 				{
-					IJ.log( "WARNING: Cannot cast " + models.get( 0 ).getClass().getSimpleName() + " to AbstractAffineModel3d, cannot concatenate axial scaling." );
+					if ( !params.silent )
+						IJ.log( "WARNING: Cannot cast " + models.get( 0 ).getClass().getSimpleName() + " to AbstractAffineModel3d, cannot concatenate axial scaling." );
 				}
 			}
 			
@@ -244,7 +284,8 @@ public class Matching
 			if ( result != null ) 
 				result.show();
 			
-			IJ.log( "Finished" );
+			if ( !params.silent )
+				IJ.log( "Finished" );
 		}
 	}
 	
@@ -356,6 +397,14 @@ public class Matching
 				
 		final TileConfiguration tc = new TileConfiguration();
 
+		if ( !params.silent )
+		{
+			if ( params.fixFirstTile )
+				IJ.log( "Fixing first tile." );
+			else
+				IJ.log( "Not fixing any tile." );
+		}
+		
 		boolean fixed = false;
 		for ( int t = 0; t < numImages; ++t )
 		{
@@ -364,15 +413,20 @@ public class Matching
 			if ( tile.getConnectedTiles().size() > 0 )
 			{
 				tc.addTile( tile );
-				if ( !fixed )
+				
+				if ( params.fixFirstTile )
 				{
-					tc.fixTile( tile );
-					fixed = true;
+					if ( !fixed )
+					{
+						tc.fixTile( tile );
+						fixed = true;
+					}
 				}
 			}
 			else 
 			{
-				IJ.log( "Tile " + t + " is not connected to any other tile, cannot compute a model" );
+				if ( !params.silent )
+					IJ.log( "Tile " + t + " is not connected to any other tile, cannot compute a model" );
 			}
 		}
 		
@@ -383,7 +437,7 @@ public class Matching
 			tc.preAlign( );
 			
 			// compute the global optimum
-			tc.optimize( 10, 10000, 200 );
+			tc.optimize( 10, 10000, 200 );			
 		}
 		catch ( Exception e )
 		{
@@ -399,17 +453,54 @@ public class Matching
 			final Tile<?> tile = tiles.get( t );
 			
 			if ( tile.getConnectedTiles().size() > 0 )
-			{
-				IJ.log( "Tile " + t + " (connected): " + tile.getModel()  );
-				models.add( (InvertibleBoundable)tile.getModel() );
+			{	
+				if ( params.regularize )
+				{
+					if ( params.dimensionality == 2 )
+						models.add( ((InterpolatedAffineModel2D)tile.getModel()).createAffineModel2D() );
+					else
+						models.add( ((InterpolatedAffineModel3D)tile.getModel()).createAffineModel3D() );
+				}
+				else
+				{					
+					models.add( (InvertibleBoundable)tile.getModel() );
+				}
+				
+				if ( !params.silent )
+					IJ.log( "Tile " + t + " (connected): " + models.get( models.size() - 1 ) );
 			}
 			else
-			{
-				IJ.log( "Tile " + t + " (NOT connected): " + tile.getModel()  );
-				models.add( (InvertibleBoundable)params.model.copy() );
+			{				
+				if ( params.regularize )
+				{
+					if ( params.dimensionality == 2 )
+						models.add( ((InterpolatedAffineModel2D)params.model.copy()).createAffineModel2D() );
+					else
+						models.add( ((InterpolatedAffineModel3D)params.model.copy()).createAffineModel3D() );					
+				}
+				else
+				{
+					models.add( (InvertibleBoundable)params.model.copy() );
+				}
+				
+				if ( !params.silent )
+					IJ.log( "Tile " + t + " (NOT connected): " + models.get( models.size() - 1 )  );
 			}
 		}
 		
+		if ( !params.silent )
+		{
+			IJ.log( "average displacement: " + tc.getError() + " px" );
+			IJ.log( "minimal displacement: " + tc.getMinError() + " px" );
+			IJ.log( "maximal displacement: " + tc.getMaxError() + " px" );
+			
+			int numCorrespondences = 0;
+			for ( final ComparePair pair : pairs )
+				numCorrespondences += pair.inliers.size();
+			
+			IJ.log( "Total number of correspondending detection: " + numCorrespondences );			
+		}
+
 		return models;
 	}
 	
@@ -499,7 +590,18 @@ public class Matching
 		//				((Particle)pm.getP2()).getID() + "; " + Util.printCoordinates( ((Particle)pm.getP2()).getL() )  + " ["+Util.printCoordinates( ((Particle)pm.getP2()).getW() )+"] {" + Util.printCoordinates( ((Particle)pm.getP2()).getPeak().getSubPixelPosition() )+"}" );
 		//}
 		
-		String statement = computeRANSAC( candidates, finalInliers, finalModel, (float)params.ransacThreshold );
+		String statement;
+		
+		if ( candidates.size() >= finalModel.getMinNumMatches() )
+		{
+			statement = computeRANSAC( candidates, finalInliers, finalModel, (float)params.ransacThreshold );
+		}
+		else
+		{
+			statement = "Not enough candidates " + candidates.size();
+			finalInliers.clear();
+		}
+		
 		//IJ.log( "First ransac: " + explanation + ": " + statement );
 		//IJ.log( "first model: " + finalModel );
 		//IJ.log( "Z1 " + zStretching1 );
@@ -562,12 +664,14 @@ public class Matching
 		}
 		else
 		{
-			IJ.log( explanation + ": " + statement + " - No inliers foundTipp: You could increase the number of neighbors, redundancy or use a model that has more degrees of freedom." );
+			if ( !params.silent )
+				IJ.log( explanation + ": " + statement + " - No inliers foundTipp: You could increase the number of neighbors, redundancy or use a model that has more degrees of freedom." );
 			finalInliers.clear();
 			return null;
 		}
 		
-		IJ.log( explanation + ": " + statement );
+		if ( !params.silent )
+			IJ.log( explanation + ": " + statement );
 		
 		if ( DescriptorParameters.printAllSimilarities )
 		{
@@ -631,7 +735,7 @@ public class Matching
 		return finalModel;
 	}
 
-	protected static ArrayList<DifferenceOfGaussianPeak<FloatType>> extractCandidates( final ImagePlus imp, final int channel, final int timepoint, final DescriptorParameters params )
+	public static ArrayList<DifferenceOfGaussianPeak<FloatType>> extractCandidates( final ImagePlus imp, final int channel, final int timepoint, final DescriptorParameters params )
 	{
 		// get the input images for registration
 		final Image<FloatType> img = InteractiveDoG.convertToFloat( imp, channel, timepoint );
@@ -649,8 +753,9 @@ public class Matching
 		
 		// remove invalid peaks
 		final int[] stats1 = removeInvalidAndCollectStatistics( peaks );
-				
-		IJ.log( "Found " + peaks.size() + " candidates for " + imp.getTitle() + " [" + timepoint + "] (" + stats1[ 1 ] + " maxima, " + stats1[ 0 ] + " minima)" );
+		
+		if ( !params.silent )
+			IJ.log( "Found " + peaks.size() + " candidates for " + imp.getTitle() + " [" + timepoint + "] (" + stats1[ 1 ] + " maxima, " + stats1[ 0 ] + " minima)" );
 		
 		return peaks;
 	}
@@ -769,6 +874,10 @@ public class Matching
 			ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks1, ArrayList<DifferenceOfGaussianPeak<FloatType>> peaks2, 
 			final Model<?> model, final int dimensionality, final float zStretching1, final float zStretching2 )
 	{
+		// test if there are enough points for the matcher
+		if ( peaks1.size() < matcher.getRequiredNumNeighbors() || peaks2.size() < matcher.getRequiredNumNeighbors() )
+			return new ArrayList<PointMatch>();
+		
 		// two new lists
 		ArrayList<Particle> listA = new ArrayList<Particle>();
 		ArrayList<Particle> listB = new ArrayList<Particle>();
